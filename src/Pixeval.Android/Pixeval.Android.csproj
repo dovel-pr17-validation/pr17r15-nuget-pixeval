@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>Exe</OutputType>
+		<TargetFramework>net10.0-android</TargetFramework>
+		<SupportedOSPlatformVersion>23</SupportedOSPlatformVersion>
+		<Nullable>enable</Nullable>
+		<ApplicationId>io.github.pixeval.pixeval</ApplicationId>
+		<ApplicationVersion>1</ApplicationVersion>
+		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
+		<AndroidEnableProfiledAot>false</AndroidEnableProfiledAot>
+		<EnableMcp>false</EnableMcp>
+		<UseMonoRuntime>false</UseMonoRuntime>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)' == 'Release'">
+		<PublishReadyToRun>true</PublishReadyToRun>
+		<PublishReadyToRunComposite>true</PublishReadyToRunComposite>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<AndroidResource Include="Icon.png">
+			<Link>Resources\drawable\Icon.png</Link>
+		</AndroidResource>
+		<AndroidAsset Include="..\Pixeval\i18n\**\*.json">
+			<Link>Assets\i18n\%(RecursiveDir)%(Filename)%(Extension)</Link>
+		</AndroidAsset>
+		<AndroidAsset Include="..\Pixeval\i18n\**\*.md">
+			<Link>Assets\i18n\%(RecursiveDir)%(Filename)%(Extension)</Link>
+		</AndroidAsset>
+	</ItemGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia.Android" Version="$(AvaloniaVersion)" />
+		<PackageReference Include="Xamarin.AndroidX.Core.SplashScreen" Version="1.2.0.2" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Pixeval\Pixeval.csproj" AdditionalProperties="EnableMcp=$(EnableMcp)" />
+	</ItemGroup>
+</Project>

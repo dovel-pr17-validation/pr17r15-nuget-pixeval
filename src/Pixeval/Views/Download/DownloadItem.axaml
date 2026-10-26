@@ -1,0 +1,108 @@
+<UserControl
+    x:Class="Pixeval.Views.Download.DownloadItem"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pixeval.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Pixeval"
+    xmlns:markup="using:FluentIcons.Avalonia.Markup"
+    xmlns:markup1="using:Pixeval.Views.Markup"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewModels="using:Pixeval.ViewModels"
+    x:DataType="{x:Type viewModels:DownloadItemViewModel}"
+    mc:Ignorable="d"
+    d:DesignHeight="90"
+    d:DesignWidth="800">
+    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+        <Image
+            Grid.Column="0"
+            Width="56"
+            Height="56"
+            VerticalAlignment="Center"
+            controls:Source.Cache="{Binding ThumbnailUrl}"
+            Stretch="UniformToFill" />
+
+        <CommandBar
+            Grid.Column="2"
+            VerticalAlignment="Center"
+            DefaultLabelPosition="Right"
+            IsDynamicOverflowEnabled="True">
+            <CommandBarButton
+                Click="ActionButton_OnClicked"
+                Icon="{markup1:SymbolIconEx Symbol={Binding ActionButtonSymbol}}"
+                IsEnabled="{Binding IsItemEnabled}"
+                Label="{Binding ActionButtonContent}" />
+            <CommandBar.SecondaryCommands>
+                <CommandBarButton
+                    Click="ResetItem_OnClicked"
+                    Icon="{markup:SymbolIcon ArrowRepeatAll}"
+                    IsEnabled="{Binding IsResetItemEnabled}"
+                    Label="{I18N {x:Static local:DownloadItemResources+ResetItem.Label}}" />
+                <CommandBarButton
+                    Click="CancelDownloadItem_OnClicked"
+                    Icon="{markup:SymbolIcon Dismiss}"
+                    IsEnabled="{Binding IsCancelItemEnabled}"
+                    Label="{I18N {x:Static local:DownloadItemResources+CancelDownloadItem.Label}}" />
+                <CommandBarButton
+                    Click="OpenDownloadLocationItem_OnClicked"
+                    Icon="{markup:SymbolIcon FolderArrowRight}"
+                    Label="{I18N {x:Static local:DownloadItemResources+OpenDownloadLocationItem.Label}}" />
+                <CommandBarButton
+                    Click="GoToPageItem_OnClicked"
+                    Icon="{markup:SymbolIcon Open}"
+                    Label="{I18N {x:Static local:DownloadItemResources+GoToPageItem.Label}}" />
+                <CommandBarButton
+                    Click="CheckErrorMessageInDetail_OnClicked"
+                    Icon="{markup:SymbolIcon ErrorCircle}"
+                    IsEnabled="{Binding IsError}"
+                    Label="{I18N {x:Static local:DownloadItemResources+CheckErrorMessageInDetailItem.Label}}" />
+            </CommandBar.SecondaryCommands>
+        </CommandBar>
+
+        <StackPanel Grid.Column="1" Spacing="4">
+            <TextBlock
+                FontWeight="SemiBold"
+                MaxLines="1"
+                Text="{Binding Entry.Title}"
+                TextTrimming="CharacterEllipsis" />
+            <TextBlock
+                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                MaxLines="1"
+                Text="{Binding AuthorsText}"
+                TextTrimming="CharacterEllipsis" />
+            <ProgressBar
+                IsIndeterminate="{Binding IsPending}"
+                Maximum="100"
+                Value="{Binding DownloadTask.ProgressPercentage}" />
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8">
+                <TextBlock
+                    Grid.Column="0"
+                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                    MaxLines="1"
+                    Text="{Binding ProgressMessage}"
+                    TextTrimming="CharacterEllipsis"
+                    TextWrapping="NoWrap" />
+                <StackPanel
+                    Grid.Column="1"
+                    VerticalAlignment="Top"
+                    IsVisible="{Binding ShowGroupStats}"
+                    Orientation="Horizontal"
+                    Spacing="5">
+                    <controls:DigitalSignalItem
+                        x:Name="StateDigitalSignalItem"
+                        Fill="{markup1:BindingDynamicResource {Binding StateBrushKey}}"
+                        IsVisible="{Binding !!DownloadTask.ActiveCount}"
+                        Text="{Binding DownloadTask.ActiveCount}" />
+                    <controls:DigitalSignalItem
+                        Fill="{DynamicResource SystemFillColorSuccessBrush}"
+                        IsVisible="{Binding !!DownloadTask.CompletedCount}"
+                        Text="{Binding DownloadTask.CompletedCount}" />
+                    <controls:DigitalSignalItem
+                        Fill="{DynamicResource SystemFillColorCriticalBrush}"
+                        IsVisible="{Binding !!DownloadTask.ErrorCount}"
+                        Text="{Binding DownloadTask.ErrorCount}" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </Grid>
+</UserControl>

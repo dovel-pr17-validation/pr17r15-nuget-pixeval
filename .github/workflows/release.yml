@@ -1,0 +1,769 @@
+name: Velopack Release
+
+on:
+  push:
+    tags:
+      - '*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: velopack-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CONFIGURATION: Release
+
+jobs:
+  release-notes:
+    name: Generate release notes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Generate GitHub release notes
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          notes_path="$RUNNER_TEMP/release-notes.md"
+          if gh release view "$RELEASE_VERSION" \
+            --repo "$GH_REPO" \
+            --json body \
+            --jq '.body // ""' > "$notes_path" 2>/dev/null \
+            && grep -q '[^[:space:]]' "$notes_path"; then
+            printf 'Using the existing GitHub release notes for %s.\n' "$RELEASE_VERSION"
+          else
+            gh api \
+              --method POST \
+              "repos/$GH_REPO/releases/generate-notes" \
+              -f tag_name="$RELEASE_VERSION" \
+              -f target_commitish="$GITHUB_SHA" \
+              --jq '.body // ""' > "$notes_path"
+          fi
+          test -f "$notes_path"
+
+      - name: Upload release notes
+        uses: actions/upload-artifact@v7
+        with:
+          name: generated-release-notes
+          path: ${{ runner.temp }}/release-notes.md
+          if-no-files-found: error
+          retention-days: 14
+
+  macos:
+    name: macOS ${{ matrix.architecture }}
+    needs:
+      - release-notes
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runtime: osx-x64
+            os: macos-15-intel
+            publish_aot: true
+          - architecture: arm64
+            runtime: osx-arm64
+            os: macos-15
+            # TODO: Re-enable NativeAOT after the linker issue is fixed:
+            # https://github.com/dotnet/runtime/issues/119380
+            publish_aot: false
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          filter: tree:0
+
+      - name: Download generated release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-release-notes
+          path: artifacts/release-notes
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        shell: bash
+        env:
+          PUBLISH_AOT: ${{ matrix.publish_aot }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          aot_arguments=()
+          if [[ "$PUBLISH_AOT" == false ]]; then
+            aot_arguments+=("-p:PublishAot=false")
+          fi
+
+          dotnet restore src/Pixeval.Desktop/Pixeval.Desktop.csproj \
+            -r "$RUNTIME" \
+            -p:Configuration="$CONFIGURATION" \
+            "${aot_arguments[@]}"
+
+      - name: Publish
+        shell: bash
+        env:
+          PUBLISH_AOT: ${{ matrix.publish_aot }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          aot_arguments=()
+          if [[ "$PUBLISH_AOT" == false ]]; then
+            aot_arguments+=("-p:PublishAot=false")
+          fi
+
+          publish_directory="$RUNNER_TEMP/pixeval-$RUNTIME"
+          dotnet publish src/Pixeval.Desktop/Pixeval.Desktop.csproj \
+            -c "$CONFIGURATION" \
+            -r "$RUNTIME" \
+            --no-restore \
+            --self-contained true \
+            -o "$publish_directory" \
+            -p:DebugSymbols=false \
+            -p:DebugType=None \
+            -p:Version="$RELEASE_VERSION" \
+            -p:AssemblyVersion="$RELEASE_VERSION" \
+            -p:FileVersion="$RELEASE_VERSION" \
+            -p:InformationalVersion="$RELEASE_VERSION" \
+            "${aot_arguments[@]}"
+          printf 'PUBLISH_DIRECTORY=%s\n' "$publish_directory" >> "$GITHUB_ENV"
+
+      - name: Package Velopack release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES_PATH: ${{ github.workspace }}/artifacts/release-notes/release-notes.md
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          release_directory="$GITHUB_WORKSPACE/artifacts/release"
+          vpk_directory="$RUNNER_TEMP/vpk"
+          base_package=""
+          mkdir -p "$release_directory"
+
+          release_tags=$(gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --exclude-drafts \
+            --exclude-pre-releases \
+            --limit 100 \
+            --json tagName,publishedAt \
+            --jq 'sort_by(.publishedAt) | reverse | .[].tagName')
+          while IFS= read -r release_tag; do
+            if [[ -z "$release_tag" || "$release_tag" == "$RELEASE_VERSION" ]]; then
+              continue
+            fi
+
+            if gh release download "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "Pixeval-*-$RUNTIME-full.nupkg" \
+              --dir "$release_directory" >/dev/null 2>&1; then
+              base_package=$(find "$release_directory" -maxdepth 1 -type f \
+                -name "Pixeval-*-$RUNTIME-full.nupkg" -print -quit)
+              if [[ -n "$base_package" ]]; then
+                printf 'Using %s as the delta base package.\n' "$base_package"
+                break
+              fi
+            fi
+          done <<< "$release_tags"
+
+          if [[ -z "$base_package" ]]; then
+            printf 'No previous Velopack package was found; skipping delta generation for %s.\n' "$RUNTIME"
+          fi
+
+          if ! dotnet tool install --tool-path "$vpk_directory" vpk --version 1.2.0; then
+            printf 'Velopack CLI installation failed.\n' >&2
+            exit 1
+          fi
+
+          if ! "$vpk_directory/vpk" pack \
+            --packId Pixeval \
+            --packVersion "$RELEASE_VERSION" \
+            --packDir "$PUBLISH_DIRECTORY" \
+            --mainExe Pixeval.Desktop \
+            --packAuthors Pixeval \
+            --packTitle Pixeval \
+            --icon "$GITHUB_WORKSPACE/src/Pixeval.Desktop/Assets/macOS/Pixeval.icns" \
+            --runtime "$RUNTIME" \
+            --channel "$RUNTIME" \
+            --delta BestSpeed \
+            --releaseNotes "$RELEASE_NOTES_PATH" \
+            --outputDir "$release_directory"; then
+            printf 'Velopack packaging failed.\n' >&2
+            exit 1
+          fi
+
+          if [[ -n "$base_package" ]]; then
+            rm -f "$base_package"
+          fi
+          rm -f \
+            "$release_directory/assets.$RUNTIME.json" \
+            "$release_directory/RELEASES-$RUNTIME"
+
+      - name: Upload macOS release asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-macos-${{ matrix.architecture }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  linux:
+    name: Linux ${{ matrix.architecture }}
+    needs:
+      - release-notes
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runtime: linux-x64
+            os: ubuntu-22.04
+          - architecture: arm64
+            runtime: linux-arm64
+            os: ubuntu-24.04-arm
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          filter: tree:0
+
+      - name: Download generated release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-release-notes
+          path: artifacts/release-notes
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Install NativeAOT prerequisites
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang squashfs-tools zlib1g-dev
+
+      - name: Restore
+        shell: bash
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          dotnet restore src/Pixeval.Desktop/Pixeval.Desktop.csproj \
+            -r "$RUNTIME" \
+            -p:Configuration="$CONFIGURATION"
+
+      - name: Publish
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          publish_directory="$RUNNER_TEMP/pixeval-$RUNTIME"
+          dotnet publish src/Pixeval.Desktop/Pixeval.Desktop.csproj \
+            -c "$CONFIGURATION" \
+            -r "$RUNTIME" \
+            --no-restore \
+            --self-contained true \
+            -o "$publish_directory" \
+            -p:DebugSymbols=false \
+            -p:DebugType=None \
+            -p:Version="$RELEASE_VERSION" \
+            -p:AssemblyVersion="$RELEASE_VERSION" \
+            -p:FileVersion="$RELEASE_VERSION" \
+            -p:InformationalVersion="$RELEASE_VERSION"
+          printf 'PUBLISH_DIRECTORY=%s\n' "$publish_directory" >> "$GITHUB_ENV"
+
+      - name: Package Velopack release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES_PATH: ${{ github.workspace }}/artifacts/release-notes/release-notes.md
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          release_directory="$GITHUB_WORKSPACE/artifacts/release"
+          vpk_directory="$RUNNER_TEMP/vpk"
+          base_package=""
+          mkdir -p "$release_directory"
+
+          release_tags=$(gh release list \
+            --repo "$GITHUB_REPOSITORY" \
+            --exclude-drafts \
+            --exclude-pre-releases \
+            --limit 100 \
+            --json tagName,publishedAt \
+            --jq 'sort_by(.publishedAt) | reverse | .[].tagName')
+          while IFS= read -r release_tag; do
+            if [[ -z "$release_tag" || "$release_tag" == "$RELEASE_VERSION" ]]; then
+              continue
+            fi
+
+            if gh release download "$release_tag" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "Pixeval-*-$RUNTIME-full.nupkg" \
+              --dir "$release_directory" >/dev/null 2>&1; then
+              base_package=$(find "$release_directory" -maxdepth 1 -type f \
+                -name "Pixeval-*-$RUNTIME-full.nupkg" -print -quit)
+              if [[ -n "$base_package" ]]; then
+                printf 'Using %s as the delta base package.\n' "$base_package"
+                break
+              fi
+            fi
+          done <<< "$release_tags"
+
+          if [[ -z "$base_package" ]]; then
+            printf 'No previous Velopack package was found; skipping delta generation for %s.\n' "$RUNTIME"
+          fi
+
+          if ! dotnet tool install --tool-path "$vpk_directory" vpk --version 1.2.0; then
+            printf 'Velopack CLI installation failed.\n' >&2
+            exit 1
+          fi
+
+          if ! "$vpk_directory/vpk" pack \
+            --packId Pixeval \
+            --packVersion "$RELEASE_VERSION" \
+            --packDir "$PUBLISH_DIRECTORY" \
+            --mainExe Pixeval.Desktop \
+            --packAuthors Pixeval \
+            --packTitle Pixeval \
+            --icon "$GITHUB_WORKSPACE/src/Pixeval/Assets/logo.svg" \
+            --runtime "$RUNTIME" \
+            --channel "$RUNTIME" \
+            --delta BestSpeed \
+            --releaseNotes "$RELEASE_NOTES_PATH" \
+            --outputDir "$release_directory"; then
+            printf 'Velopack packaging failed.\n' >&2
+            exit 1
+          fi
+
+          if [[ -n "$base_package" ]]; then
+            rm -f "$base_package"
+          fi
+          rm -f \
+            "$release_directory/assets.$RUNTIME.json" \
+            "$release_directory/RELEASES-$RUNTIME"
+
+      - name: Upload Linux release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-linux-${{ matrix.architecture }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  android:
+    name: Android ${{ matrix.architecture }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: arm64
+            runtime: android-arm64
+          - architecture: x64
+            runtime: android-x64
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          filter: tree:0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore Android workload
+        run: dotnet workload restore src/Pixeval.Android/Pixeval.Android.csproj
+
+      - name: Restore signing keystore
+        id: keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:KEYSTORE_BASE64)) {
+            throw "ANDROID_KEYSTORE_BASE64 is not configured."
+          }
+
+          $keystorePath = Join-Path $env:RUNNER_TEMP "pixeval-release.jks"
+          [IO.File]::WriteAllBytes(
+            $keystorePath,
+            [Convert]::FromBase64String($env:KEYSTORE_BASE64))
+          "path=$keystorePath" >> $env:GITHUB_OUTPUT
+
+      - name: Restore Android packages
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          dotnet restore src/Pixeval.Android/Pixeval.Android.csproj `
+            -r $env:RUNTIME `
+            -p:Configuration=$env:CONFIGURATION `
+            -p:EnableMcp=false `
+            -p:BuildInParallel=false `
+            -p:RestoreBuildInParallel=false `
+            -p:PublishReadyToRun=true `
+            -p:PublishReadyToRunComposite=false `
+            -p:AndroidPackageFormat=apk
+
+      - name: Publish signed APK
+        env:
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ARCHITECTURE: ${{ matrix.architecture }}
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:ANDROID_KEYSTORE_PASSWORD) `
+              -or [string]::IsNullOrWhiteSpace($env:ANDROID_KEY_PASSWORD)) {
+            throw "Android signing passwords are not configured."
+          }
+
+          $publishDirectory = Join-Path $env:RUNNER_TEMP "pixeval-$env:RUNTIME"
+          dotnet publish src/Pixeval.Android/Pixeval.Android.csproj `
+            -c $env:CONFIGURATION `
+            -r $env:RUNTIME `
+            --no-restore `
+            --disable-build-servers `
+            -maxcpucount:1 `
+            -o $publishDirectory `
+            -p:BuildInParallel=false `
+            -p:PublishReadyToRun=true `
+            -p:PublishReadyToRunComposite=false `
+            -p:UseSharedCompilation=false `
+            -p:GeneratePackageOnBuild=false `
+            -p:DebugSymbols=false `
+            -p:DebugType=None `
+            -p:Version=$env:RELEASE_VERSION `
+            -p:ApplicationVersion=$env:GITHUB_RUN_NUMBER `
+            -p:ApplicationDisplayVersion=$env:RELEASE_VERSION `
+            -p:EnableMcp=false `
+            -p:AndroidPackageFormat=apk `
+            -p:AndroidKeyStore=true `
+            -p:AndroidSigningKeyStore=$env:KEYSTORE_PATH `
+            -p:AndroidSigningStorePass=$env:ANDROID_KEYSTORE_PASSWORD `
+            -p:AndroidSigningKeyAlias=pixeval `
+            -p:AndroidSigningKeyPass=$env:ANDROID_KEY_PASSWORD
+          if ($LASTEXITCODE -ne 0) {
+            throw "Android publish failed with exit code $LASTEXITCODE."
+          }
+
+          $apk = Get-ChildItem -LiteralPath $publishDirectory -Filter *-Signed.apk -Recurse `
+            | Select-Object -First 1
+          if ($null -eq $apk) {
+            $apk = Get-ChildItem -LiteralPath $publishDirectory -Filter *.apk -Recurse `
+              | Where-Object Name -NotMatch 'unsigned' `
+              | Select-Object -First 1
+          }
+          if ($null -eq $apk) {
+            throw "The signed APK was not found in $publishDirectory."
+          }
+
+          $releaseDirectory = Join-Path $PWD "artifacts\release"
+          $null = New-Item -ItemType Directory -Force -Path $releaseDirectory
+          $releaseApk = Join-Path $releaseDirectory "Pixeval-$env:RELEASE_VERSION-android-$env:ARCHITECTURE.apk"
+          Copy-Item -LiteralPath $apk.FullName -Destination $releaseApk
+
+          $apksigner = Get-ChildItem -LiteralPath (Join-Path $env:ANDROID_HOME "build-tools") `
+              -Filter apksigner.bat -Recurse `
+            | Sort-Object FullName -Descending `
+            | Select-Object -First 1
+          if ($null -eq $apksigner) {
+            throw "apksigner.bat was not found."
+          }
+
+          & $apksigner.FullName verify --verbose $releaseApk
+          if ($LASTEXITCODE -ne 0) {
+            throw "APK signature verification failed with exit code $LASTEXITCODE."
+          }
+
+      - name: Upload Android release asset
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-android-${{ matrix.architecture }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows ${{ matrix.architecture }}
+    needs:
+      - release-notes
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: x64
+            runtime: win-x64
+            publish_aot: true
+          - architecture: x86
+            runtime: win-x86
+            publish_aot: false
+          - architecture: arm64
+            runtime: win-arm64
+            publish_aot: true
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          submodules: recursive
+          filter: tree:0
+
+      - name: Download generated release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-release-notes
+          path: artifacts/release-notes
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        env:
+          PUBLISH_AOT: ${{ matrix.publish_aot }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          [string[]] $aotArguments = @()
+          if ($env:PUBLISH_AOT -eq 'false') {
+            $aotArguments += '-p:PublishAot=false'
+          }
+
+          dotnet restore src/Pixeval.Desktop/Pixeval.Desktop.csproj `
+            -r $env:RUNTIME `
+            -p:Configuration=$env:CONFIGURATION `
+            @aotArguments
+
+      - name: Publish
+        id: publish
+        env:
+          PUBLISH_AOT: ${{ matrix.publish_aot }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          [string[]] $aotArguments = @()
+          if ($env:PUBLISH_AOT -eq 'false') {
+            $aotArguments += '-p:PublishAot=false'
+          }
+
+          $publishDirectory = Join-Path $env:RUNNER_TEMP "pixeval-$env:RUNTIME"
+          dotnet publish src/Pixeval.Desktop/Pixeval.Desktop.csproj `
+            -c $env:CONFIGURATION `
+            -r $env:RUNTIME `
+            --no-restore `
+            --self-contained true `
+            -o $publishDirectory `
+            -p:DebugSymbols=false `
+            -p:DebugType=None `
+            -p:Version=$env:RELEASE_VERSION `
+            -p:AssemblyVersion=$env:RELEASE_VERSION `
+            -p:FileVersion=$env:RELEASE_VERSION `
+            -p:InformationalVersion=$env:RELEASE_VERSION `
+            @aotArguments
+
+          "directory=$publishDirectory" >> $env:GITHUB_OUTPUT
+
+      - name: Package Velopack release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PUBLISH_DIRECTORY: ${{ steps.publish.outputs.directory }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+          RELEASE_NOTES_PATH: ${{ github.workspace }}\artifacts\release-notes\release-notes.md
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          $vpkDirectory = Join-Path $env:RUNNER_TEMP "vpk"
+          dotnet tool install --tool-path $vpkDirectory vpk --version 1.2.0
+          if ($LASTEXITCODE -ne 0) {
+            throw "Velopack CLI installation failed with exit code $LASTEXITCODE."
+          }
+
+          $releaseDirectory = Join-Path $PWD "artifacts\release"
+          $vpkPath = Join-Path $vpkDirectory "vpk.exe"
+          $basePackage = $null
+          $releaseTags = & gh release list `
+            --repo $env:GITHUB_REPOSITORY `
+            --exclude-drafts `
+            --exclude-pre-releases `
+            --limit 100 `
+            --json tagName,publishedAt `
+            --jq 'sort_by(.publishedAt) | reverse | .[].tagName'
+          foreach ($releaseTag in $releaseTags) {
+            if ([string]::IsNullOrWhiteSpace($releaseTag) -or $releaseTag -eq $env:RELEASE_VERSION) {
+              continue
+            }
+
+            & gh release download $releaseTag `
+              --repo $env:GITHUB_REPOSITORY `
+              --pattern "Pixeval-*-$env:RUNTIME-full.nupkg" `
+              --dir $releaseDirectory *> $null
+            if ($LASTEXITCODE -eq 0) {
+              $basePackage = Get-ChildItem -LiteralPath $releaseDirectory `
+                -Filter "Pixeval-*-$env:RUNTIME-full.nupkg" `
+                -File `
+                | Select-Object -First 1
+              if ($null -ne $basePackage) {
+                Write-Host "Using $($basePackage.FullName) as the delta base package."
+                break
+              }
+            }
+          }
+
+          if ($null -eq $basePackage) {
+            Write-Host "No previous Velopack package was found; skipping delta generation for $env:RUNTIME."
+          }
+
+          & $vpkPath pack `
+            --packId Pixeval `
+            --packVersion $env:RELEASE_VERSION `
+            --packDir $env:PUBLISH_DIRECTORY `
+            --mainExe Pixeval.Desktop.exe `
+            --packAuthors Pixeval `
+            --packTitle Pixeval `
+            --icon (Join-Path $PWD "src\Pixeval\Assets\logo.ico") `
+            --runtime $env:RUNTIME `
+            --channel $env:RUNTIME `
+            --delta BestSpeed `
+            --releaseNotes $env:RELEASE_NOTES_PATH `
+            --outputDir $releaseDirectory
+          if ($LASTEXITCODE -ne 0) {
+            throw "Velopack packaging failed with exit code $LASTEXITCODE."
+          }
+
+          if ($null -ne $basePackage) {
+            Remove-Item -LiteralPath $basePackage.FullName -Force
+          }
+          Remove-Item -LiteralPath @(
+            (Join-Path $releaseDirectory "assets.$env:RUNTIME.json"),
+            (Join-Path $releaseDirectory "RELEASES-$env:RUNTIME")
+          ) -Force -ErrorAction SilentlyContinue
+
+      - name: Upload Windows release assets
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-windows-${{ matrix.architecture }}
+          path: artifacts/release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Create draft release
+    needs:
+      - release-notes
+      - windows
+      - macos
+      - linux
+      - android
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download release assets
+        uses: actions/download-artifact@v8
+        with:
+          pattern: release-*
+          path: artifacts/release
+          merge-multiple: true
+
+      - name: Download generated release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: generated-release-notes
+          path: artifacts/release-notes
+
+      - name: Prepare public release assets
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          shopt -s nullglob
+          feeds=(artifacts/release/releases.*.json)
+          if (( ${#feeds[@]} == 0 )); then
+            printf 'No Velopack release feeds were found.\n' >&2
+            exit 1
+          fi
+
+          for feed in "${feeds[@]}"; do
+            filtered_feed="$RUNNER_TEMP/$(basename "$feed")"
+            if ! jq --arg version "$RELEASE_VERSION" '
+              .Assets |= map(select(.Version == $version)) |
+              if (.Assets | length) == 0 then error("feed contains no current release assets") else . end
+            ' "$feed" > "$filtered_feed"; then
+              printf 'Failed to prepare Velopack feed %s.\n' "$feed" >&2
+              exit 1
+            fi
+            mv "$filtered_feed" "$feed"
+          done
+
+          find artifacts/release -maxdepth 1 -type f \
+            \( -name 'assets.*.json' -o -name 'RELEASES-*' \) \
+            -delete
+
+          while IFS= read -r -d '' package; do
+            package_name=$(basename "$package")
+            case "$package_name" in
+              Pixeval-"$RELEASE_VERSION"-*-full.nupkg|Pixeval-"$RELEASE_VERSION"-*-delta.nupkg)
+                ;;
+              *)
+                rm -f "$package"
+                ;;
+            esac
+          done < <(find artifacts/release -maxdepth 1 -type f -name '*.nupkg' -print0)
+
+      - name: Generate SHA256 checksums
+        shell: bash
+        run: |
+          checksum_file="$RUNNER_TEMP/SHA256SUMS.txt"
+          : > "$checksum_file"
+          while IFS= read -r -d '' asset; do
+            sha256sum "$asset" | sed 's#  artifacts/release/#  #' >> "$checksum_file"
+          done < <(find artifacts/release -maxdepth 1 -type f -print0 | sort -z)
+          mv "$checksum_file" artifacts/release/SHA256SUMS.txt
+
+      - name: Create or update draft release
+        shell: bash
+        env:
+          GH_REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          if gh release view "$RELEASE_VERSION" >/dev/null 2>&1; then
+            is_draft=$(gh release view "$RELEASE_VERSION" --json isDraft --jq .isDraft)
+            if [[ "$is_draft" != true ]]; then
+              printf 'Release %s already exists and is not a draft.\n' "$RELEASE_VERSION" >&2
+              exit 1
+            fi
+
+            gh release edit "$RELEASE_VERSION" \
+              --notes-file artifacts/release-notes/release-notes.md
+          else
+            gh release create "$RELEASE_VERSION" \
+              --draft \
+              --verify-tag \
+              --title "Pixeval $RELEASE_VERSION" \
+              --notes-file artifacts/release-notes/release-notes.md
+          fi
+
+          mapfile -d '' assets < <(find artifacts/release -maxdepth 1 -type f -print0 | sort -z)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            printf 'No release assets were prepared.\n' >&2
+            exit 1
+          fi
+          gh release upload "$RELEASE_VERSION" "${assets[@]}" --clobber

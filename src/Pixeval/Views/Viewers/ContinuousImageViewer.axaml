@@ -1,0 +1,52 @@
+<UserControl
+    x:Class="Pixeval.Views.Viewers.ContinuousImageViewer"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pixeval.Controls"
+    xmlns:local="using:Pixeval.Views.Viewers"
+    xmlns:scroll="using:SmoothScroll.Avalonia.Controls"
+    xmlns:vm="using:Pixeval.ViewModels.Viewers"
+    x:DataType="{x:Type vm:ImageViewerViewModel}"
+    x:Name="Root">
+    <scroll:ScrollView
+        x:Name="ViewerScrollView"
+        HorizontalScrollBarVisibility="Hidden"
+        IsHorizontalMeasureInfinite="{Binding $parent[local:ContinuousImageViewer].BrowseDirection, ConverterParameter={x:Static Orientation.Horizontal}, Converter={x:Static ObjectConverters.Equal}}"
+        IsVerticalMeasureInfinite="{Binding $parent[local:ContinuousImageViewer].BrowseDirection, ConverterParameter={x:Static Orientation.Vertical}, Converter={x:Static ObjectConverters.Equal}}"
+        PropertyChanged="ViewerScrollView_OnPropertyChanged"
+        ScrollChanged="ViewerScrollView_OnScrollChanged"
+        SizeChanged="ViewerScrollView_OnSizeChanged"
+        Theme="{StaticResource ViewerScrollViewTheme}">
+        <ItemsControl
+            x:Name="ImageItemsControl"
+            HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            ContainerClearing="ImageItemsControl_OnContainerClearing"
+            ContainerPrepared="ImageItemsControl_OnContainerPrepared"
+            ItemsSource="{Binding Images}"
+            LayoutUpdated="ImageItemsControl_OnLayoutUpdated">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <controls:VirtualizingStackPanel
+                        Orientation="{Binding $parent[local:ContinuousImageViewer].BrowseDirection}"
+                        Spacing="8"
+                        ViewportOffset="{Binding $parent[scroll:ScrollView].Offset}"
+                        ViewportScale="{Binding $parent[scroll:ScrollView].ZoomFactor}"
+                        ViewportSize="{Binding $parent[scroll:ScrollView].Viewport}" />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate DataType="{x:Type vm:SingleViewerViewModel}">
+                    <local:SingleImageViewer
+                        MinWidth="200"
+                        MinHeight="200"
+                        HorizontalAlignment="Stretch"
+                        VerticalAlignment="Stretch"
+                        PointerPressed="ImageItem_OnPointerPressed"
+                        SizeChanged="ImageItem_OnSizeChanged"
+                        UseScrollView="False" />
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </scroll:ScrollView>
+</UserControl>

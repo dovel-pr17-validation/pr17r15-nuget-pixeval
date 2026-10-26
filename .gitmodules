@@ -1,0 +1,19 @@
+[submodule "src/lib/Imouto"]
+	path = src/lib/Imouto
+	url = https://github.com/Pixeval/Imouto.git
+	branch = master
+[submodule "src/lib/AutoSettingsPage"]
+	path = src/lib/AutoSettingsPage
+	url = https://github.com/Pixeval/AutoSettingsPage.git
+	branch = master
+[submodule "src/lib/Mako"]
+	path = src/lib/Mako
+	url = https://github.com/Pixeval/Mako.git
+	branch = master
+[submodule "src/lib/AnimatedControls.Avalonia"]
+	path = src/lib/AnimatedControls.Avalonia
+	url = https://github.com/Pixeval/AnimatedControls.Avalonia.git
+	branch = master
+[submodule "src/lib/SmoothScroll.Avalonia"]
+	path = src/lib/SmoothScroll.Avalonia
+	url = https://github.com/Poker-sang/SmoothScroll.Avalonia.git

@@ -1,0 +1,29 @@
+<UserControl
+    x:Class="Pixeval.Views.Viewers.SwipeImageViewer"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pixeval.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:viewers="using:Pixeval.ViewModels.Viewers"
+    xmlns:viewers1="using:Pixeval.Views.Viewers"
+    x:DataType="{x:Type viewers:ImageViewerViewModel}"
+    mc:Ignorable="d"
+    d:DesignHeight="450"
+    d:DesignWidth="800">
+    <controls:SwipeControl
+        x:Name="SwipeContent"
+        ItemsSource="{Binding Images}"
+        PropertyChanged="SwipeContent_OnPropertyChanged"
+        SelectedIndex="{Binding SelectedPageIndex}"
+        SelectionChanged="SelectingMultiPage_OnSelectionChanged">
+        <controls:SwipeControl.PageTransition>
+            <PageSlide Orientation="Horizontal" Duration="0:0:0.3" />
+        </controls:SwipeControl.PageTransition>
+        <controls:SwipeControl.ItemTemplate>
+            <DataTemplate DataType="{x:Type viewers:SingleViewerViewModel}">
+                <viewers1:SingleImageViewer UseScrollView="True" />
+            </DataTemplate>
+        </controls:SwipeControl.ItemTemplate>
+    </controls:SwipeControl>
+</UserControl>

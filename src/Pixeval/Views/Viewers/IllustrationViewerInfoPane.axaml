@@ -1,0 +1,186 @@
+<UserControl
+    x:Class="Pixeval.Views.Viewers.IllustrationViewerInfoPane"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:common="using:FluentIcons.Common"
+    xmlns:controls="using:Pixeval.Controls"
+    xmlns:converters="using:Pixeval.Views.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Pixeval.Views.Viewers"
+    xmlns:markup="using:FluentIcons.Avalonia.Markup"
+    xmlns:markup1="using:Pixeval.Views.Markup"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:pixeval="using:Pixeval"
+    xmlns:utilities="using:Pixeval.Utilities"
+    xmlns:viewModels="using:Pixeval.ViewModels"
+    xmlns:viewers="using:Pixeval.ViewModels.Viewers"
+    x:DataType="{x:Type viewers:IllustrationViewerPageViewModel}"
+    Name="InfoPaneRoot"
+    mc:Ignorable="d"
+    d:DesignHeight="450"
+    d:DesignWidth="800">
+
+    <UserControl.Styles>
+        <Style Selector="local|IllustrationViewerInfoPane#InfoPaneRoot">
+            <Style Selector="^ local|WorkInfoPane#InfoPaneSection">
+                <Setter Property="Theme" Value="{StaticResource LiteWorkInfoPaneStyle}" />
+                <Setter Property="IsVisible" Value="True" />
+            </Style>
+            <Style Selector="^ TabbedPage#TabbedPageSection">
+                <Setter Property="IsVisible" Value="False" />
+            </Style>
+
+            <Style Selector="^:docked">
+                <Style Selector="^ local|WorkInfoPane#InfoPaneSection">
+                    <!-- <Setter Property="Theme" Value="{StaticResource {x:Type local:WorkInfoPane}}" /> -->
+                    <Setter Property="Theme" Value="{StaticResource LiteWorkInfoPaneStyle}" />
+                    <Setter Property="IsVisible" Value="False" />
+                </Style>
+                <Style Selector="^ TabbedPage#TabbedPageSection">
+                    <Setter Property="IsVisible" Value="True" />
+                </Style>
+            </Style>
+        </Style>
+
+    </UserControl.Styles>
+
+    <Grid>
+        <DockPanel>
+            <StackPanel ClipToBounds="True" DockPanel.Dock="Bottom">
+                <ListBox
+                    x:Name="ThumbnailListBox"
+                    Height="85"
+                    Margin="5,0"
+                    Padding="0,0,0,5"
+                    HorizontalAlignment="Stretch"
+                    controls:IncrementalLoadingBehavior.IsEnabled="True"
+                    controls:IncrementalLoadingBehavior.Threshold="100"
+                    ItemsSource="{Binding Illustrations}"
+                    ScrollViewer.HorizontalScrollBarVisibility="Visible"
+                    ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                    SelectedIndex="{Binding CurrentWorkIndex}"
+                    SelectionMode="Single">
+                    <ListBox.IsVisible>
+                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding Path="#InfoPaneRoot.IsDocked" />
+                            <Binding Converter="{x:Static ObjectConverters.IsNotNull}" Path="Illustrations" />
+                        </MultiBinding>
+                    </ListBox.IsVisible>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <controls:VirtualizingStackPanel Orientation="Horizontal" Spacing="5" />
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="{x:Type viewModels:IllustrationItemViewModel}">
+                            <Border
+                                Width="80"
+                                Height="80"
+                                ClipToBounds="True"
+                                CornerRadius="{StaticResource ControlCornerRadius}">
+                                <Image controls:Source.Cache="{Binding ThumbnailUrl}" Stretch="UniformToFill" />
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+                <CommandBar
+                    x:Name="BottomActionBar"
+                    Margin="32,0"
+                    HorizontalAlignment="Center"
+                    Background="Transparent"
+                    DefaultLabelPosition="Collapsed"
+                    IsDynamicOverflowEnabled="False">
+                    <CommandBarButton
+                        Command="{Binding CurrentIllustration.BookmarkCommand, FallbackValue={x:Null}}"
+                        CommandParameter="{Binding $self, Mode=OneTime}"
+                        ContextRequested="AddToBookmarkButton_OnRightClick"
+                        Icon="{markup1:SymbolIconEx Heart,
+                                                    IconVariant={Binding CurrentIllustration.IsBookmarkedDisplay,
+                                                                         Converter={x:Static converters:PixevalConverters.StateToIconVariant}}}"
+                        IsVisible="{Binding CurrentIllustration.IsBookmarkSupported, FallbackValue={x:False}}"
+                        Label="{I18N {x:Static pixeval:EntryItemResources.AddToBookmark}}" />
+                    <CommandBarButton
+                        Command="{Binding CurrentIllustration.SaveCommand, FallbackValue={x:Null}}"
+                        CommandParameter="{Binding $self, Mode=OneTime}"
+                        Icon="{markup:SymbolIcon SaveMultiple}"
+                        Label="{I18N {x:Static pixeval:EntryItemResources.Save}}" />
+                    <CommandBarSeparator />
+                    <CommandBarButton
+                        Command="{Binding CurrentIllustration.AddToWatchLaterCommand, FallbackValue={x:Null}}"
+                        CommandParameter="{Binding $self, Mode=OneTime}"
+                        Icon="{markup1:SymbolIconEx Clock,
+                                                    IconVariant={Binding CurrentIllustration.IsInWatchLater,
+                                                                         Converter={x:Static converters:PixevalConverters.BoolToIconVariant}}}"
+                        Label="{I18N {x:Static pixeval:EntryItemResources.AddToWatchLater}}" />
+                    <!--<CommandBarButton
+                            Click="{x:Static utilities:AvaloniaHelper.CopyTagToClipboard}"
+                            Icon="{markup:SymbolIcon Link}"
+                            Label="{I18N {x:Static pixeval:EntryItemResources.GenerateLink}}"
+                            Tag="{Binding CurrentIllustration.AppUri, FallbackValue={x:Null}}" />-->
+                    <CommandBarButton
+                        Click="{x:Static utilities:AvaloniaHelper.CopyTagToClipboard}"
+                        Icon="{markup:SymbolIcon LinkMultiple}"
+                        Label="{I18N {x:Static pixeval:EntryItemResources.GenerateWebLink}}"
+                        Tag="{Binding CurrentIllustration.WebsiteUri, FallbackValue={x:Null}}" />
+                    <CommandBarButton
+                        Click="{x:Static utilities:AvaloniaHelper.LaunchUriTagInWebBrowser}"
+                        Icon="{markup:SymbolIcon GlobeArrowUp}"
+                        Label="{I18N {x:Static pixeval:EntryItemResources.OpenInWebBrowser}}"
+                        Tag="{Binding CurrentIllustration.WebsiteUri, FallbackValue={x:Null}}" />
+                </CommandBar>
+            </StackPanel>
+
+            <DockPanel VerticalAlignment="Stretch" ClipToBounds="True">
+                <local:WorkSeriesInfoPane DataContext="{Binding SeriesInfo}" DockPanel.Dock="Bottom" />
+                <Panel>
+                    <local:WorkInfoPane Name="InfoPaneSection" ArtworkInfo="{Binding CurrentIllustration.Entry, FallbackValue={x:Null}}">
+                        <local:WorkInfoPane.ActionZone>
+                            <Border
+                                Width="32"
+                                Height="32"
+                                VerticalAlignment="Top"
+                                IsHitTestVisible="False" />
+                        </local:WorkInfoPane.ActionZone>
+                    </local:WorkInfoPane>
+
+                    <TabbedPage
+                        Name="TabbedPageSection"
+                        Background="Transparent"
+                        IsVisible="{Binding #InfoPaneRoot.IsDocked}"
+                        Pages="{Binding PanePages}"
+                        TabPlacement="Top">
+                        <TabbedPage.Resources>
+                            <Thickness x:Key="TabbedPageTabStripPadding">0,0,60,0</Thickness>
+                        </TabbedPage.Resources>
+                    </TabbedPage>
+                </Panel>
+            </DockPanel>
+        </DockPanel>
+
+        <ToggleButton
+            Margin="14"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Bottom"
+            Content="{markup1:SymbolIconEx Symbol={markup1:EitherBinding {Binding #InfoPaneRoot.IsLocked},
+                                                                         PinOff,
+                                                                         Pin,
+                                                                         x:TypeArguments=common:Symbol}}"
+            IsChecked="{Binding #InfoPaneRoot.IsLocked, Mode=TwoWay}"
+            IsVisible="{Binding #InfoPaneRoot.IsDocked, Converter={x:Static BoolConverters.Not}}"
+            Theme="{StaticResource TransparentButtonStyle}"
+            ToolTip.Tip="{I18N {x:Static pixeval:EntryViewerPageResources.Pin}}" />
+        <Button
+            Width="32"
+            Height="32"
+            Margin="14"
+            HorizontalAlignment="Right"
+            VerticalAlignment="Top"
+            Click="ChevronButtonClicked"
+            Content="{markup1:SymbolIconEx Symbol={markup1:EitherBinding {Binding #InfoPaneRoot.IsDocked},
+                                                                         ChevronUp,
+                                                                         ChevronDown,
+                                                                         x:TypeArguments=common:Symbol}}"
+            Theme="{StaticResource TransparentButtonStyle}"
+            ToolTip.Tip="{I18N {x:Static pixeval:EntryViewerPageResources.InfoAndComments}}" />
+    </Grid>
+</UserControl>

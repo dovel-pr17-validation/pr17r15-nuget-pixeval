@@ -1,0 +1,64 @@
+<views:IconContentPage
+    x:Class="Pixeval.Views.Settings.HelpPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:CommunityToolkit.Avalonia.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="using:Pixeval.Controls"
+    xmlns:markup="using:FluentIcons.Avalonia.Markup"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:pixeval="using:Pixeval"
+    xmlns:settings="using:Pixeval.Views.Settings"
+    xmlns:views="using:Pixeval.Views"
+    mc:Ignorable="d"
+    d:DesignHeight="800"
+    d:DesignWidth="600">
+    <ScrollViewer>
+        <StackPanel Margin="20" Spacing="{StaticResource SettingStackPanelSpacing}">
+            <controls:SettingsExpander Header="{I18N {x:Static pixeval:HelpPageResources+DownloadMacroHelpExpander.Header}}" HeaderIcon="{markup:SymbolIcon Rename}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard HorizontalContentAlignment="Stretch" ContentAlignment="Left">
+                        <local:MarkdownBox Markdown="{I18N {x:Static pixeval:MarkdownResources.DownloadMacroHelp}}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <controls:SettingsExpander Header="{I18N {x:Static pixeval:HelpPageResources+QueryFilterHelpExpander.Header}}" HeaderIcon="{markup:SymbolIcon Filter}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard HorizontalContentAlignment="Stretch" ContentAlignment="Vertical">
+                        <controls:SettingsCard.Header>
+                            <TextBlock
+                                Margin="0,10"
+                                Text="{I18N {x:Static pixeval:HelpPageResources+QueryFilterSimpleHelpHeader.Text}}"
+                                Theme="{StaticResource SubtitleTextBlockStyle}" />
+                        </controls:SettingsCard.Header>
+                        <local:MarkdownBox Markdown="{I18N {x:Static pixeval:MarkdownResources.QueryFilterSimpleHelp}}" />
+                    </controls:SettingsCard>
+                    <controls:SettingsCard HorizontalContentAlignment="Stretch" ContentAlignment="Vertical">
+                        <controls:SettingsCard.Header>
+                            <TextBlock
+                                Margin="0,10"
+                                Text="{I18N {x:Static pixeval:HelpPageResources+QueryFilterHelpHeader.Text}}"
+                                Theme="{StaticResource SubtitleTextBlockStyle}" />
+                        </controls:SettingsCard.Header>
+                        <local:MarkdownBox Markdown="{I18N {x:Static pixeval:MarkdownResources.QueryFilterHelp}}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <controls:SettingsExpander Header="{I18N {x:Static pixeval:HelpPageResources+WorkSubscriptionsHelpExpander.Header}}" HeaderIcon="{markup:SymbolIcon Alert}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard HorizontalContentAlignment="Stretch" ContentAlignment="Left">
+                        <local:MarkdownBox Markdown="{I18N {x:Static pixeval:MarkdownResources.WorkSubscriptionsHelp}}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <controls:SettingsExpander Header="{I18N {x:Static pixeval:HelpPageResources+ExtensionsHelpExpander.Header}}" HeaderIcon="{markup:SymbolIcon PuzzlePiece}">
+                <controls:SettingsExpander.Items>
+                    <controls:SettingsCard HorizontalContentAlignment="Stretch" ContentAlignment="Left">
+                        <local:MarkdownBox Markdown="{I18N {x:Static pixeval:MarkdownResources.ExtensionsHelp}}" />
+                    </controls:SettingsCard>
+                </controls:SettingsExpander.Items>
+            </controls:SettingsExpander>
+            <settings:McpHelpSection />
+        </StackPanel>
+    </ScrollViewer>
+</views:IconContentPage>

@@ -1,0 +1,101 @@
+// Copyright (c) Pixeval.
+// Licensed under the GPL-3.0 License.
+
+using System;
+using System.Collections.Generic;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.Templates;
+
+namespace Pixeval.Controls;
+
+public class SwipeControl : TransitioningContentControl
+{
+    static SwipeControl()
+    {
+        FocusableProperty.OverrideDefaultValue<SwipeControl>(true);
+        IsTabStopProperty.OverrideDefaultValue<SwipeControl>(false);
+    }
+
+    /// <inheritdoc />
+    protected override Type StyleKeyOverride => typeof(TransitioningContentControl);
+
+    public event EventHandler<Control, ImageViewerSelectionChangedEventArgs>? SelectionChanged;
+
+    public static readonly StyledProperty<IReadOnlyList<object>?> ItemsSourceProperty = AvaloniaProperty.Register<SwipeControl, IReadOnlyList<object>?>(nameof(ItemsSource));
+
+    public IReadOnlyList<object>? ItemsSource
+    {
+        get => GetValue(ItemsSourceProperty);
+        set => SetValue(ItemsSourceProperty, value);
+    }
+
+    public static readonly StyledProperty<int> SelectedIndexProperty = AvaloniaProperty.Register<SwipeControl, int>(nameof(SelectedIndex));
+
+    public int SelectedIndex
+    {
+        get => GetValue(SelectedIndexProperty);
+        set => SetValue(SelectedIndexProperty, value);
+    }
+
+    public static readonly StyledProperty<IDataTemplate?> ItemTemplateProperty = AvaloniaProperty.Register<SwipeControl, IDataTemplate?>(nameof(ItemTemplate));
+
+    public IDataTemplate? ItemTemplate
+    {
+        get => GetValue(ItemTemplateProperty);
+        set => SetValue(ItemTemplateProperty, value);
+    }
+
+    /// <inheritdoc />
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property != SelectedIndexProperty && change.Property != ItemsSourceProperty && change.Property != ItemTemplateProperty)
+            return;
+
+        var hadKeyboardFocus = IsKeyboardFocusWithin;
+        if (ItemsSource is not { } items || items.Count == 0 || SelectedIndex < 0 || SelectedIndex >= items.Count)
+        {
+            Content = null;
+            RestoreKeyboardFocus(hadKeyboardFocus);
+            return;
+        }
+
+        var item = items[SelectedIndex];
+
+        if (change.Property == SelectedIndexProperty)
+        {
+            var oldIndex = change.GetOldValue<int>();
+            var newIndex = change.GetNewValue<int>();
+            SetTransitionDirection(oldIndex, newIndex);
+        }
+
+        if (ItemTemplate is null || !ItemTemplate.Match(item))
+            Content = item;
+        else
+        {
+            var content = ItemTemplate.Build(item);
+            content?.DataContext = item;
+            Content = content;
+        }
+
+        RestoreKeyboardFocus(hadKeyboardFocus);
+        SelectionChanged?.Invoke(this, new ImageViewerSelectionChangedEventArgs(SelectedIndex, item));
+    }
+
+    internal void SetTransitionDirection(int oldIndex, int newIndex) => IsTransitionReversed = oldIndex > newIndex;
+
+    private void RestoreKeyboardFocus(bool hadKeyboardFocus)
+    {
+        // The selected content is transient; move focus to the stable owner before the old presenter is removed.
+        if (hadKeyboardFocus)
+            _ = Focus();
+    }
+}
+
+public class ImageViewerSelectionChangedEventArgs(int newIndex, object? newItem) : EventArgs
+{
+    public int NewIndex { get; } = newIndex;
+
+    public object? NewItem { get; } = newItem;
+}

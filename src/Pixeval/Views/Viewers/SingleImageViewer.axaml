@@ -1,0 +1,146 @@
+<UserControl
+    x:Class="Pixeval.Views.Viewers.SingleImageViewer"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:ai="using:AnimatedControls.Avalonia"
+    xmlns:common="using:FluentIcons.Common"
+    xmlns:converters="using:Pixeval.Views.Converters"
+    xmlns:markup="using:FluentIcons.Avalonia.Markup"
+    xmlns:markup1="using:Pixeval.Views.Markup"
+    xmlns:pixeval="using:Pixeval"
+    xmlns:scroll="using:SmoothScroll.Avalonia.Controls"
+    xmlns:vm="using:Pixeval.ViewModels.Viewers"
+    x:DataType="{x:Type vm:SingleViewerViewModel}"
+    x:Name="Root">
+    <UserControl.Resources>
+        <DataTemplate x:Key="ScrollableImageTemplate" DataType="{x:Type vm:SingleViewerViewModel}">
+            <!--  图片查看器（缩放/平移）  -->
+            <scroll:ScrollView
+                x:Name="ViewerScrollView"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch"
+                IsHorizontalMeasureInfinite="True"
+                IsVerticalMeasureInfinite="True"
+                Theme="{StaticResource ViewerScrollViewTheme}">
+                <ai:AnimatedImage
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    IsPlaying="{Binding IsPlaying}"
+                    RenderTransformOrigin="50%,50%"
+                    Source="{Binding DisplaySource}"
+                    Stretch="Uniform">
+                    <ai:AnimatedImage.RenderTransform>
+                        <TransformGroup>
+                            <ScaleTransform ScaleX="{Binding MirrorScaleX}" />
+                            <RotateTransform Angle="{Binding RotationDegree}" />
+                        </TransformGroup>
+                    </ai:AnimatedImage.RenderTransform>
+                </ai:AnimatedImage>
+            </scroll:ScrollView>
+        </DataTemplate>
+
+        <DataTemplate x:Key="PlainImageTemplate" DataType="{x:Type vm:SingleViewerViewModel}">
+            <ai:AnimatedImage
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                IsPlaying="{Binding IsPlaying}"
+                RenderTransformOrigin="50%,50%"
+                Source="{Binding DisplaySource}"
+                Stretch="Uniform">
+                <ai:AnimatedImage.RenderTransform>
+                    <TransformGroup>
+                        <ScaleTransform ScaleX="{Binding MirrorScaleX}" />
+                        <RotateTransform Angle="{Binding RotationDegree}" />
+                    </TransformGroup>
+                </ai:AnimatedImage.RenderTransform>
+            </ai:AnimatedImage>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <UserControl.ContextMenu>
+        <ContextMenu>
+            <!--  播放/暂停（仅动图可见）  -->
+            <MenuItem
+                Command="{Binding PlayPauseCommand}"
+                Header="{I18N {x:Static pixeval:MiscResources.Play}}"
+                Icon="{markup1:SymbolIconEx Symbol={markup1:EitherBinding {Binding IsPlaying},
+                                                                          Pause,
+                                                                          Play,
+                                                                          x:TypeArguments=common:Symbol}}"
+                InputGesture="Space"
+                IsChecked="{Binding IsPlaying, Mode=TwoWay}"
+                IsVisible="{Binding IsPicGif}" />
+            <!--  保存  -->
+            <MenuItem
+                Command="{Binding CopyCommand}"
+                CommandParameter="{Binding $self}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.Copy}}"
+                Icon="{markup:SymbolIcon Copy}"
+                InputGesture="{markup1:PlatformCommandGesture C}"
+                IsVisible="{Binding IsPicGif, Converter={x:Static BoolConverters.Not}}" />
+            <MenuItem
+                Command="{Binding SaveAsCommand}"
+                CommandParameter="{Binding $self}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.SaveAs}}"
+                Icon="{markup:SymbolIcon SaveEdit}"
+                InputGesture="{markup1:PlatformCommandGesture S,
+                                                              AdditionalModifiers=Shift}" />
+            <MenuItem
+                Command="{Binding SaveImageCommand}"
+                CommandParameter="{Binding $self}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.SaveImage}}"
+                Icon="{markup:SymbolIcon Save}" />
+            <MenuItem
+                Command="{Binding ViewOriginalCommand}"
+                CommandParameter="{Binding $self}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.ViewOriginal}}"
+                Icon="{markup:SymbolIcon ImageGlobe}" />
+            <Separator IsVisible="{x:Static vm:SingleViewerViewModel.HasTransformerExtensions}" />
+            <MenuItem
+                Command="{Binding PrimaryTransformerExtensionItem.Command, FallbackValue={x:Null}}"
+                CommandParameter="{Binding $self}"
+                Header="{Binding PrimaryTransformerExtensionItem.Label, FallbackValue={x:Null}}"
+                Icon="{markup1:SymbolIconEx Symbol={Binding PrimaryTransformerExtensionItem.Symbol}}"
+                IsVisible="{x:Static vm:SingleViewerViewModel.HasTransformerExtensions}"
+                ToolTip.Tip="{Binding PrimaryTransformerExtensionItem.Description, FallbackValue={x:Null}}" />
+            <MenuItem
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.OtherImageTransformerExtensions}}"
+                Icon="{markup:SymbolIcon ImageMultiple}"
+                IsVisible="{x:Static vm:SingleViewerViewModel.HasTransformerExtensions}"
+                ItemsSource="{Binding TransformerExtensionItems}">
+                <MenuItem.ItemContainerTheme>
+                    <ControlTheme
+                        x:DataType="{x:Type vm:ImageTransformerExtensionCommandItem}"
+                        BasedOn="{StaticResource {x:Type MenuItem}}"
+                        TargetType="{x:Type MenuItem}">
+                        <Setter Property="Command" Value="{Binding Command}" />
+                        <Setter Property="CommandParameter" Value="{Binding $self}" />
+                        <Setter Property="Header" Value="{Binding Label}" />
+                        <Setter Property="Icon" Value="{Binding Symbol, Converter={x:Static converters:PixevalConverters.SymbolIconConverter}}" />
+                        <Setter Property="ToolTip.Tip" Value="{Binding Description}" />
+                    </ControlTheme>
+                </MenuItem.ItemContainerTheme>
+            </MenuItem>
+            <Separator />
+            <!--  旋转/镜像  -->
+            <MenuItem
+                Command="{Binding RotateClockwiseCommand}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.RotateClockwise}}"
+                Icon="{markup:SymbolIcon ArrowRotateClockwise}" />
+            <MenuItem
+                Command="{Binding RotateCounterclockwiseCommand}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.RotateCounterclockwise}}"
+                Icon="{markup:SymbolIcon ArrowRotateCounterclockwise}" />
+            <MenuItem
+                Command="{Binding MirrorCommand}"
+                Header="{I18N {x:Static pixeval:EntryViewerPageResources.Mirror}}"
+                Icon="{markup:SymbolIcon FlipHorizontal}"
+                IsChecked="{Binding IsMirrored, Mode=TwoWay}"
+                ToggleType="CheckBox" />
+        </ContextMenu>
+    </UserControl.ContextMenu>
+    <ContentPresenter
+        x:Name="ImagePresenter"
+        IsHitTestVisible="{Binding HasDisplayImage}"
+        PropertyChanged="ImagePresenter_OnPropertyChanged" />
+</UserControl>

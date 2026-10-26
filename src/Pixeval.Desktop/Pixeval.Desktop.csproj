@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<OutputType>WinExe</OutputType>
+		<!--If you are willing to use Windows/MacOS native APIs you will need to create 3 projects.
+			One for Windows with net8.0-windows TFM, one for MacOS with net8.0-macos and one with net8.0 TFM for Linux.-->
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<EnableMcp>true</EnableMcp>
+        <PublishAot Condition="'$(Configuration)' != 'Debug'">true</PublishAot>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<ApplicationManifest>app.manifest</ApplicationManifest>
+		<ApplicationIcon Condition="$([MSBuild]::IsOSPlatform('Windows'))">..\Pixeval\Assets\logo.ico</ApplicationIcon>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="Avalonia.Desktop" Version="$(AvaloniaVersion)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\Pixeval\Pixeval.csproj"
+		                  AdditionalProperties="EnableMcp=$(EnableMcp)"
+		                  GlobalPropertiesToRemove="PublishAot" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="Assets\macOS\Pixeval.icns"
+		      Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+</Project>

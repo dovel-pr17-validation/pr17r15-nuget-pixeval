@@ -1,0 +1,173 @@
+<ContentPage
+    x:Class="Pixeval.Views.Viewers.UserViewerPage"
+    xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pixeval.Controls"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:markup="using:FluentIcons.Avalonia.Markup"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:pixeval="using:Pixeval"
+    xmlns:utilities="using:Pixeval.Utilities"
+    xmlns:viewers="using:Pixeval.ViewModels.Viewers"
+    xmlns:views="using:Pixeval.Views"
+    x:DataType="{x:Type viewers:UserViewerPageViewModel}"
+    Design.DataContext="{x:Static utilities:DesignHelper.DesignUserViewerPageViewModel}"
+    Header="{Binding Header}"
+    mc:Ignorable="d"
+    d:DesignHeight="600"
+    d:DesignWidth="1200">
+    <ContentPage.Icon>
+        <Image
+            Width="16"
+            Height="16"
+            Source="avares://Pixeval/Assets/Platforms/pixiv.png" />
+    </ContentPage.Icon>
+    <Grid>
+        <DockPanel IsVisible="{Binding UserDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <Expander
+                x:Name="UserInfoExpander"
+                Padding="0"
+                HorizontalAlignment="Stretch"
+                controls:Source.BackgroundCache="{Binding BackgroundUrl}"
+                DockPanel.Dock="Top"
+                ExpandDirection="Up"
+                IsExpanded="{Binding OpenUserInfo, Source={x:Static views:PixevalSettings.Instance}, Mode=TwoWay}"
+                PropertyChanged="UserInfoExpander_OnPropertyChanged">
+                <Expander.Header>
+                    <DockPanel>
+                        <CommandBar
+                            DefaultLabelPosition="Right"
+                            DockPanel.Dock="Right"
+                            IsDynamicOverflowEnabled="True">
+                            <CommandBarButton
+                                Command="{Binding FollowCommand}"
+                                Icon="{markup:SymbolIcon PersonAdd}"
+                                IsVisible="{Binding !IsFollowed}"
+                                Label="{I18N {x:Static pixeval:UserViewerPageResources.Follow}}" />
+                            <CommandBarButton
+                                Command="{Binding FollowPrivatelyCommand}"
+                                Icon="{markup:SymbolIcon PersonLock}"
+                                IsVisible="{Binding !IsFollowed}"
+                                Label="{I18N {x:Static pixeval:UserViewerPageResources.PrivateFollow}}" />
+                            <CommandBarButton
+                                Command="{Binding UnfollowCommand}"
+                                Icon="{markup:SymbolIcon PersonDelete}"
+                                IsVisible="{Binding IsFollowed}"
+                                Label="{I18N {x:Static pixeval:UserViewerPageResources.Unfollow}}" />
+                            <CommandBarSeparator />
+                            <CommandBarButton
+                                Click="{x:Static utilities:AvaloniaHelper.CopyTagToClipboard}"
+                                Icon="{markup:SymbolIcon Link}"
+                                Label="{I18N {x:Static pixeval:EntryItemResources.GenerateLink}}"
+                                Tag="{Binding UserDetail.UserEntity.AppUri, FallbackValue={x:Null}}" />
+                            <CommandBarButton
+                                Click="{x:Static utilities:AvaloniaHelper.CopyTagToClipboard}"
+                                Icon="{markup:SymbolIcon LinkMultiple}"
+                                Label="{I18N {x:Static pixeval:EntryItemResources.GenerateWebLink}}"
+                                Tag="{Binding UserDetail.UserEntity.WebsiteUri, FallbackValue={x:Null}}" />
+                            <CommandBarButton
+                                Click="{x:Static utilities:AvaloniaHelper.LaunchUriTagInWebBrowser}"
+                                Icon="{markup:SymbolIcon GlobeArrowUp}"
+                                Label="{I18N {x:Static pixeval:EntryItemResources.OpenInWebBrowser}}"
+                                Tag="{Binding UserDetail.UserEntity.WebsiteUri, FallbackValue={x:Null}}" />
+                            <CommandBar.SecondaryCommands>
+                                <CommandBarButton
+                                    Command="{Binding BlockUserCommand}"
+                                    Icon="{markup:SymbolIcon PersonProhibited}"
+                                    Label="{I18N {x:Static pixeval:BlockedContentResources.BlockUser}}" />
+                            </CommandBar.SecondaryCommands>
+                        </CommandBar>
+
+                        <StackPanel
+                            VerticalAlignment="Center"
+                            Orientation="Horizontal"
+                            Spacing="16">
+                            <!--  头像  -->
+                            <controls:AvatarImage
+                                Width="40"
+                                Height="40"
+                                VerticalAlignment="Center"
+                                controls:Source.Cache="{Binding AvatarUrl}"
+                                IsVisible="{Binding !#UserInfoExpander.IsExpanded}" />
+
+                            <!--  用户名、ID、简介  -->
+                            <StackPanel
+                                MaxWidth="150"
+                                VerticalAlignment="Center"
+                                IsVisible="{Binding !#UserInfoExpander.IsExpanded}"
+                                Spacing="6">
+                                <TextBlock
+                                    MaxLines="1"
+                                    Text="{Binding UserDetail.UserEntity.Name, FallbackValue={x:Null}}"
+                                    TextWrapping="Wrap"
+                                    Theme="{StaticResource CaptionStrongTextBlockStyle}" />
+                                <TextBlock
+                                    FontSize="13"
+                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                    Text="{Binding Id}" />
+                            </StackPanel>
+                            <controls:IconText
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="PersonHeart"
+                                Text="{Binding UserDetail.UserProfile.TotalFollowUsers, FallbackValue={x:Null}}" />
+                            <controls:IconText
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="People"
+                                Text="{Binding UserDetail.UserProfile.TotalMyPixivUsers, FallbackValue={x:Null}}" />
+                            <controls:IconText
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="Image"
+                                Text="{Binding UserDetail.UserProfile.TotalIllustrations, FallbackValue={x:Null}}" />
+                            <controls:IconText
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="ImageMultiple"
+                                Text="{Binding UserDetail.UserProfile.TotalManga, FallbackValue={x:Null}}" />
+                            <controls:IconText
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Symbol="BookOpen"
+                                Text="{Binding UserDetail.UserProfile.TotalNovelSeries, FallbackValue={x:Null}}" />
+                        </StackPanel>
+                    </DockPanel>
+                </Expander.Header>
+                <Border MinHeight="210" Background="{DynamicResource PixevalTranslucentBackground}">
+                    <!--  用户信息  -->
+                    <StackPanel
+                        Margin="40,20"
+                        VerticalAlignment="Stretch"
+                        Orientation="Horizontal"
+                        Spacing="30">
+                        <!--  头像  -->
+                        <controls:AvatarImage
+                            Width="80"
+                            Height="80"
+                            VerticalAlignment="Center"
+                            controls:Source.Cache="{Binding AvatarUrl}" />
+
+                        <!--  用户名、ID、简介  -->
+                        <StackPanel
+                            MaxWidth="400"
+                            VerticalAlignment="Center"
+                            Spacing="6">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding UserDetail.UserEntity.Name, FallbackValue={x:Null}}" Theme="{StaticResource TitleTextBlockStyle}" />
+                                <controls:PixevalBadge IsVisible="{Binding UserDetail.UserProfile.IsPremium, FallbackValue={x:Null}}" Mode="Premium" />
+                            </StackPanel>
+                            <TextBlock
+                                FontSize="13"
+                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                Text="{Binding Id}" />
+                            <TextBlock
+                                MaxHeight="60"
+                                controls:TranslatableTextBlockBehavior.IsEnabled="True"
+                                controls:TranslatableTextBlockBehavior.TextType="UserComment"
+                                Text="{Binding UserDetail.UserEntity.Description, FallbackValue={x:Null}}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+            </Expander>
+            <TabbedPage Pages="{Binding TabPages}" />
+        </DockPanel>
+        <controls:ViewerStateOverlay ErrorMessage="{Binding LoadErrorMessage}" IsLoading="{Binding IsLoading}" />
+    </Grid>
+</ContentPage>

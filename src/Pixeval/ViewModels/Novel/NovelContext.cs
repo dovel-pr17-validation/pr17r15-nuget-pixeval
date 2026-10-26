@@ -1,0 +1,174 @@
+// Copyright (c) Pixeval.
+// Licensed under the GPL-3.0 License.
+
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Threading;
+using Mako;
+using Mako.Model;
+using Pixeval.AppManagement;
+
+namespace Pixeval.ViewModels;
+
+public sealed class NovelContext(NovelContent novelContent) : INovelContext<Stream>, IDisposable
+{
+    private bool _isDisposed;
+
+    public Uri CoverUri { get; } = GetCoverUri(novelContent.CoverUrl);
+
+    public string CoverFileName => GetCoverFileName(CoverUri);
+
+    public int TotalImagesCount => AllUrls.Length;
+
+    /// <summary>
+    /// 所有图片的URL
+    /// </summary>
+    /// <returns>小说图片是内嵌的，没必要用原图</returns>
+    public string[] AllUrls { get; } =
+    [
+        GetCoverUri(novelContent.CoverUrl).OriginalString,
+        .. novelContent.Images.Select(x => x.OriginalUrl),
+        .. novelContent.Illustrations.Select(x => x.ThumbnailUrl)
+    ];
+
+    public string[] AllFileNames { get; } =
+    [
+        GetCoverFileName(GetCoverUri(novelContent.CoverUrl)),
+        .. novelContent.Images.Select(GetLocalImageFileName),
+        .. novelContent.Illustrations.Select(GetLocalImageFileName)
+    ];
+
+    internal static string GetLocalImageFileName(NovelImage image) =>
+        GetLocalImageFileName(image.NovelImageId.ToString(), image.OriginalUrl);
+
+    internal static string GetLocalImageFileName(NovelIllustration illustration) =>
+        GetLocalImageFileName($"{illustration.Id}-{illustration.Page}", illustration.ThumbnailUrl);
+
+    internal static string GetCoverFileName(Uri uri)
+    {
+        var extension = Path.GetExtension(uri.AbsolutePath);
+        return string.IsNullOrEmpty(extension) ? "cover.png" : $"cover{extension}";
+    }
+
+    private static Uri GetCoverUri(string? url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out var coverUri)
+            && coverUri.Scheme is "http" or "https"
+            && !string.IsNullOrWhiteSpace(coverUri.Host)
+            && !string.IsNullOrEmpty(Path.GetExtension(coverUri.AbsolutePath)))
+            return coverUri;
+
+        return new(DefaultImageUrls.ImageNotAvailable);
+    }
+
+    private static string GetLocalImageFileName(string stem, string url) =>
+        stem + Path.GetExtension(new Uri(url).AbsolutePath);
+
+    public StringBuilder LoadMdContent()
+    {
+        var index = 0;
+        var length = NovelContent.Text.Length;
+
+        var sb = new StringBuilder();
+        if (CoverFileName is { } coverFileName)
+            _ = sb.AppendLine($"![cover]({coverFileName})").AppendLine();
+
+        for (var i = 0; index < length; ++i)
+        {
+            var parser = new PixivNovelMdParser<Stream>(sb, i);
+            _ = parser.Parse(NovelContent.Text, ref index, this);
+            if (LoadingCts.IsCancellationRequested)
+                break;
+        }
+
+        return sb;
+    }
+
+    public StringBuilder LoadHtmlContent()
+    {
+        var index = 0;
+        var length = NovelContent.Text.Length;
+
+        var sb = new StringBuilder();
+        if (CoverFileName is { } coverFileName)
+            _ = sb.AppendLine($"<img src=\"{coverFileName}\" alt=\"cover\" />").AppendLine();
+
+        for (var i = 0; index < length; ++i)
+        {
+            var parser = new PixivNovelHtmlParser<Stream>(sb, i);
+            _ = parser.Parse(NovelContent.Text, ref index, this);
+            if (LoadingCts.IsCancellationRequested)
+                break;
+        }
+
+        return sb;
+    }
+
+    public Stream? TryGetStream(int index)
+    {
+        if (index is 0)
+            return CoverImage;
+        --index;
+
+        if (index < NovelContent.Images.Count)
+            return UploadedImages.GetValueOrDefault(NovelContent.Images[index].NovelImageId);
+        var illustration = NovelContent.Illustrations[index - NovelContent.Images.Count];
+        return IllustrationImages.GetValueOrDefault((illustration.Id, illustration.Page));
+    }
+
+    public void SetStream(int index, Stream? stream)
+    {
+        if (index is 0)
+        {
+            CoverImage = stream ?? AppInfo.GetImageNotAvailableStream();
+            return;
+        }
+        --index;
+
+        if (index < NovelContent.Images.Count)
+        {
+            UploadedImages[NovelContent.Images[index].NovelImageId] = stream ?? AppInfo.GetImageNotAvailableStream();
+        }
+        else
+        {
+            var illustration = NovelContent.Illustrations[index - NovelContent.Images.Count];
+            IllustrationImages[(illustration.Id, illustration.Page)] = stream ?? AppInfo.GetImageNotAvailableStream();
+        }
+    }
+
+    public void Dispose()
+    {
+        if (_isDisposed)
+            return;
+
+        _isDisposed = true;
+        LoadingCts.Cancel();
+        LoadingCts.Dispose();
+        CoverImage?.Dispose();
+        foreach (var (_, value) in IllustrationImages)
+            value.Dispose();
+        IllustrationImages.Clear();
+        foreach (var (_, value) in UploadedImages)
+            value.Dispose();
+        UploadedImages.Clear();
+        IllustrationLookup.Clear();
+        ImageLookup.Clear();
+    }
+
+    public NovelContent NovelContent { get; } = novelContent;
+
+    public Dictionary<(long, int), NovelIllustration> IllustrationLookup { get; } = [];
+
+    public Dictionary<(long, int), Stream> IllustrationImages { get; } = [];
+
+    public Dictionary<long, NovelImage> ImageLookup { get; } = [];
+
+    public Dictionary<long, Stream> UploadedImages { get; } = [];
+
+    private Stream? CoverImage { get; set; }
+
+    public CancellationTokenSource LoadingCts { get; } = new();
+}
